@@ -334,15 +334,31 @@ export const VisionInspector: React.FC<VisionInspectorProps> = ({
               </div>
 
               {matchedObject && (
-                <div className="bg-black/50 rounded-lg p-2 border border-emerald-900/60 text-[11px] space-y-1">
-                  <div className="text-emerald-300 font-semibold">
-                    Target: {matchedObject.color || ''} {matchedObject.name} ({Math.round(matchedObject.confidence * 100)}%)
+                <div className="bg-black/50 rounded-lg p-2 border border-emerald-900/60 text-[11px] space-y-1.5">
+                  <div className="text-emerald-300 font-semibold flex items-center justify-between">
+                    <span>Target: {matchedObject.color || ''} {matchedObject.name}</span>
+                    <span className="text-cyan-400 font-bold">{Math.round(matchedObject.confidence * 100)}%</span>
                   </div>
-                  <div>
-                    Center: <strong className="text-white">X: {matchedObject.center.x} px, Y: {matchedObject.center.y} px</strong>
+                  <div className="grid grid-cols-2 gap-1 text-[10px]">
+                    <div>
+                      <span className="text-zinc-400">Pixel (u, v):</span>{' '}
+                      <strong className="text-white">X:{matchedObject.center.x}, Y:{matchedObject.center.y} px</strong>
+                    </div>
+                    {matchedObject.table_coordinates && (
+                      <div>
+                        <span className="text-amber-400">Table (X,Y,Z):</span>{' '}
+                        <strong className="text-amber-200">
+                          {matchedObject.table_coordinates.x}, {matchedObject.table_coordinates.y}, {matchedObject.table_coordinates.z} mm
+                        </strong>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-zinc-400 text-[10px]">
-                    Box: [{matchedObject.bounding_box.x1}, {matchedObject.bounding_box.y1}, {matchedObject.bounding_box.x2}, {matchedObject.bounding_box.y2}]
+                  <div className="text-zinc-400 text-[10px] flex items-center justify-between border-t border-zinc-800/60 pt-1">
+                    <span>Box: [{matchedObject.bounding_box.x1}, {matchedObject.bounding_box.y1}, {matchedObject.bounding_box.x2}, {matchedObject.bounding_box.y2}]</span>
+                    <span>
+                      {matchedObject.bounding_box.x2 - matchedObject.bounding_box.x1} x {matchedObject.bounding_box.y2 - matchedObject.bounding_box.y1} px
+                      {matchedObject.table_dimensions && ` (~${matchedObject.table_dimensions.width_mm}x${matchedObject.table_dimensions.length_mm} mm)`}
+                    </span>
                   </div>
                 </div>
               )}
@@ -417,15 +433,33 @@ export const VisionInspector: React.FC<VisionInspectorProps> = ({
                           </div>
                         </div>
 
-                        {/* Coordinates Details */}
-                        <div className="grid grid-cols-2 gap-2 text-[11px] text-zinc-300 pt-1 border-t border-zinc-800/60">
-                          <div>
-                            <span className="text-zinc-500 block text-[10px]">Center (px)</span>
-                            <strong>X: {obj.center.x}, Y: {obj.center.y}</strong>
+                        {/* Coordinates Details: Pixel X/Y, Table X/Y/Z, Dimensions */}
+                        <div className="space-y-1.5 text-[11px] text-zinc-300 pt-1.5 border-t border-zinc-800/60">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="text-zinc-500 block text-[10px]">Pixel Center (u, v)</span>
+                              <strong>X: {obj.center.x}, Y: {obj.center.y} px</strong>
+                            </div>
+                            {obj.table_coordinates && (
+                              <div>
+                                <span className="text-amber-400 block text-[10px]">Table Surface (X, Y, Z)</span>
+                                <strong className="text-amber-200">
+                                  X: {obj.table_coordinates.x}, Y: {obj.table_coordinates.y}, Z: {obj.table_coordinates.z} mm
+                                </strong>
+                              </div>
+                            )}
                           </div>
-                          <div>
-                            <span className="text-zinc-500 block text-[10px]">Bounding Box</span>
-                            <span>[{obj.bounding_box.x1}, {obj.bounding_box.y1}, {obj.bounding_box.x2}, {obj.bounding_box.y2}]</span>
+
+                          <div className="flex items-center justify-between text-[10px] text-zinc-400 pt-1 border-t border-zinc-800/40">
+                            <span>Box: [{obj.bounding_box.x1}, {obj.bounding_box.y1}, {obj.bounding_box.x2}, {obj.bounding_box.y2}]</span>
+                            <span>
+                              Dims: {obj.bounding_box.x2 - obj.bounding_box.x1}x{obj.bounding_box.y2 - obj.bounding_box.y1} px
+                              {obj.table_dimensions && (
+                                <span className="text-zinc-300 ml-1">
+                                  (~{obj.table_dimensions.width_mm}x{obj.table_dimensions.length_mm} mm)
+                                </span>
+                              )}
+                            </span>
                           </div>
                         </div>
                       </div>

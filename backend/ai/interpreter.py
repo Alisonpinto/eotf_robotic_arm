@@ -10,6 +10,8 @@ from .schemas import (
     StructuredTask,
     TargetObject,
     ObjectAttributes,
+    ActionStr,
+    RobotIdentifier,
 )
 
 
@@ -67,33 +69,38 @@ class DynamicCommandParser:
         cleaned = text.strip()
         lower = cleaned.lower()
 
-        # 1. Extract Destination & Source Entities
+        # 1. Extract Destination & Source Entities (Robot 1, Robot 2, directions, etc.)
         source, destination = self._extract_source_and_destination(lower, preferred_robot)
 
-        # 2. Extract Action
+        # 2. Extract Action (e.g. transfer, pick, find)
         action = self._extract_action(lower, source, destination)
 
-        # 3. Extract Target Object and Attributes
+        # 3. Extract Target Object and Attributes generically without hardcoding
         target_obj = self._extract_target_object(lower, action)
 
         # Adjust source/destination roles based on action context
-        if action == "pick_and_transfer":
+        if action in ("transfer", "pick_and_transfer"):
             if not destination:
-                destination = "jetarm"
+                destination = RobotIdentifier("Robot 2")
             if not source or source == destination:
-                source = "diy_arm" if destination == "jetarm" else "jetarm"
+                source = RobotIdentifier("Robot 1") if destination == "Robot 2" or destination == "jetarm" else RobotIdentifier("Robot 2")
         elif action in ("pick", "pick_and_place"):
             if not source:
-                source = preferred_robot or ("jetarm" if "jet" in lower else "diy_arm")
+                source = preferred_robot or (RobotIdentifier("Robot 2") if "jet" in lower or "robot 2" in lower else RobotIdentifier("Robot 1"))
 
         # 4. Generate human-readable summary
         summary = self._generate_summary(action, target_obj, source, destination)
 
-        # 5. Build and validate StructuredTask
+        # 5. Build and validate StructuredTask with extended transfer representation
         task = StructuredTask(
             raw_command=cleaned,
             action=action,
             object=target_obj,
+            object_name=target_obj.name if target_obj else None,
+            colour=target_obj.colour if target_obj else None,
+            color=target_obj.color if target_obj else None,
+            source_robot=source,
+            destination_robot=destination,
             source=source,
             destination=destination,
             confidence=0.96 if target_obj else 0.88,
@@ -108,51 +115,81 @@ class DynamicCommandParser:
         source = preferred_robot
         destination: Optional[str] = None
 
-        # Check destination patterns: "give it to X", "transfer to X", "pass to X", "move it to X", "into X", "to the X"
-        dest_match = re.search(
-            r"\b(?:to|into|onto|towards|give\s+(?:it\s+to|to)|hand\s+to)\s+(?:the\s+)?([a-z0-9_\-\s]+?)(?:\.|$|,|\s+and)",
+        # Check destination patterns: "give it to X", "give to X", "transfer to X", "pass to X", "hand to X", "move to X", "to the X"
+        dest_robot_match = re.search(
+            r"\b(?:to|into|onto|towards|give\s+(?:it\s+to|to)|hand\s+(?:it\s+to|to)|pass\s+(?:it\s+to|to)|transfer\s+(?:it\s+to|to))\s+(?:the\s+)?(?:robot|arm)\s*([12])\b",
             lower,
         )
-        if dest_match:
-            dest_raw = dest_match.group(1).strip()
-            # Check if destination is a robot
-            if re.search(r"\b(jetarm|jet\s*arm|hiwonder|jetson)\b", dest_raw):
-                destination = "jetarm"
-            elif re.search(r"\b(diy|diy\s*arm|custom\s*arm|3d\s*arm)\b", dest_raw):
-                destination = "diy_arm"
-            else:
-                # Direction or location (e.g. "right", "left", "bin a", "table")
-                for dir_word in self.DIRECTION_WORDS:
-                    if dir_word in dest_raw:
-                        destination = dir_word
-                        break
-                if not destination:
-                    destination = dest_raw.replace(" ", "_")
+        if dest_robot_match:
+            destination = RobotIdentifier(f"Robot {dest_robot_match.group(1)}")
+        else:
+            dest_match = re.search(
+                r"\b(?:to|into|onto|towards|give\s+(?:it\s+to|to)|hand\s+to|pass\s+(?:it\s+to|to)|transfer\s+(?:it\s+to|to))\s+(?:the\s+)?([a-z0-9_\-\s]+?)(?:\.|$|,|\s+and)",
+                lower,
+            )
+            if dest_match:
+                dest_raw = dest_match.group(1).strip()
+                if re.search(r"\b(robot\s*2|arm\s*2)\b", dest_raw):
+                    destination = RobotIdentifier("Robot 2")
+                elif re.search(r"\b(robot\s*1|arm\s*1)\b", dest_raw):
+                    destination = RobotIdentifier("Robot 1")
+                elif re.search(r"\b(jetarm|jet\s*arm|hiwonder|jetson)\b", dest_raw):
+                    destination = RobotIdentifier("jetarm")
+                elif re.search(r"\b(diy|diy\s*arm|custom\s*arm|3d\s*arm)\b", dest_raw):
+                    destination = RobotIdentifier("diy_arm")
+                else:
+                    for dir_word in self.DIRECTION_WORDS:
+                        if dir_word in dest_raw:
+                            destination = dir_word
+                            break
+                    if not destination:
+                        destination = dest_raw.replace(" ", "_")
 
-        # Check source patterns: "with X", "using X", "from X"
-        source_match = re.search(r"\b(?:with|using|from|by)\s+(?:the\s+)?([a-z0-9_\-\s]+?)(?:\.|$|,|\s+to|\s+and)", lower)
-        if source_match:
-            src_raw = source_match.group(1).strip()
-            if re.search(r"\b(jetarm|jet\s*arm|hiwonder)\b", src_raw):
-                source = "jetarm"
-            elif re.search(r"\b(diy|diy\s*arm|3d\s*arm)\b", src_raw):
-                source = "diy_arm"
+        # Check source patterns:
+        # 1. Leading robot clause: "Robot 1 pick...", "Arm 1 take..."
+        start_robot_match = re.match(r"^\s*(?:the\s+)?(?:robot|arm)\s*([12])\b", lower)
+        if start_robot_match:
+            source = RobotIdentifier(f"Robot {start_robot_match.group(1)}")
 
-        # Explicit robot mentions elsewhere if not yet assigned
+        # 2. "with/using/from/by Robot 1/2"
         if not source:
-            if re.search(r"\b(jetarm|jet\s*arm)\b", lower) and destination != "jetarm":
-                source = "jetarm"
+            source_robot_match = re.search(r"\b(?:with|using|from|by)\s+(?:the\s+)?(?:robot|arm)\s*([12])\b", lower)
+            if source_robot_match:
+                source = RobotIdentifier(f"Robot {source_robot_match.group(1)}")
+
+        # 3. Legacy "with/using/from/by JetArm/DIY"
+        if not source:
+            source_match = re.search(r"\b(?:with|using|from|by)\s+(?:the\s+)?([a-z0-9_\-\s]+?)(?:\.|$|,|\s+to|\s+and)", lower)
+            if source_match:
+                src_raw = source_match.group(1).strip()
+                if re.search(r"\b(robot\s*1|arm\s*1)\b", src_raw):
+                    source = RobotIdentifier("Robot 1")
+                elif re.search(r"\b(robot\s*2|arm\s*2)\b", src_raw):
+                    source = RobotIdentifier("Robot 2")
+                elif re.search(r"\b(jetarm|jet\s*arm|hiwonder)\b", src_raw):
+                    source = RobotIdentifier("jetarm")
+                elif re.search(r"\b(diy|diy\s*arm|3d\s*arm)\b", src_raw):
+                    source = RobotIdentifier("diy_arm")
+
+        # 4. Explicit mentions elsewhere
+        if not source:
+            if re.search(r"\b(robot\s*1|arm\s*1)\b", lower) and destination != "Robot 1":
+                source = RobotIdentifier("Robot 1")
+            elif re.search(r"\b(robot\s*2|arm\s*2)\b", lower) and destination != "Robot 2":
+                source = RobotIdentifier("Robot 2")
+            elif re.search(r"\b(jetarm|jet\s*arm)\b", lower) and destination != "jetarm":
+                source = RobotIdentifier("jetarm")
             elif re.search(r"\b(diy|diy\s*arm|custom\s*arm)\b", lower) and destination != "diy_arm":
-                source = "diy_arm"
+                source = RobotIdentifier("diy_arm")
 
         return source, destination
 
     def _extract_action(self, lower: str, source: Optional[str], destination: Optional[str]) -> str:
-        # Multi-stage composite actions
+        # Multi-stage composite transfer actions
         if re.search(r"\b(give|pass|transfer|hand)\b", lower) and (
-            destination in ("jetarm", "diy_arm") or "arm" in lower
+            destination in ("Robot 1", "Robot 2", "jetarm", "diy_arm") or "robot" in lower or "arm" in lower
         ):
-            return "pick_and_transfer"
+            return ActionStr("transfer")
 
         if re.search(r"\b(find|locate|search|spot)\b", lower) and re.search(r"\b(move|shift|slide|push)\b", lower):
             return "find_and_move"
@@ -202,18 +239,23 @@ class DynamicCommandParser:
         return "custom_task"
 
     def _extract_target_object(self, lower: str, action: str) -> Optional[TargetObject]:
-        # Clean out introductory phrases and prepositions to isolate object phrase
         cleaned = lower
-        # Remove prepositional phrases at the end (e.g. "and give it to the jetarm", "to the right", "into bin a")
-        cleaned = re.sub(r"\b(?:and\s+)?(?:give|pass|transfer|move)\s+(?:it\s+)?to\s+.*$", "", cleaned)
-        cleaned = re.sub(r"\b(?:to|into|onto)\s+(?:the\s+)?(?:right|left|bin|table|jetarm|diy\s*arm).*$", "", cleaned)
+        # 1. Strip leading source robot clause (e.g. "robot 1", "arm 1", "robot 2")
+        cleaned = re.sub(r"^\s*(?:the\s+)?(?:robot|arm)\s*[12]\s*[,:]?\s*", "", cleaned)
 
-        # Remove leading action verbs
+        # 2. Strip conversational / polite intros
+        cleaned = re.sub(r"^(?:please\s+)?(?:could\s+you\s+)?(?:can\s+you\s+)?(?:i\s+want\s+you\s+to\s+)?", "", cleaned)
+
+        # 3. Strip leading action verbs at start of object clause
         cleaned = re.sub(
-            r"^(?:please\s+)?(?:could\s+you\s+)?(?:can\s+you\s+)?(?:pick(?:\s+up)?|find|locate|move|grab|take|inspect|scan|get)\s+",
+            r"^(?:pick(?:\s+up)?|find|locate|move|grab|take|inspect|scan|get|transfer|hold|reach)\s+",
             "",
             cleaned,
         )
+
+        # 4. Strip destination / transfer phrases at the end
+        cleaned = re.sub(r"\b(?:and\s+)?(?:give|pass|transfer|hand|move)\s+(?:it\s+)?(?:to|into|onto)\s+.*$", "", cleaned)
+        cleaned = re.sub(r"\b(?:to|into|onto)\s+(?:the\s+)?(?:robot\s*[12]|arm\s*[12]|jetarm|diy\s*arm|right|left|bin|table).*$", "", cleaned)
 
         tokens = re.findall(r"[a-z0-9]+", cleaned)
         if not tokens:
@@ -233,19 +275,17 @@ class DynamicCommandParser:
             elif token in self.SIZE_WORDS:
                 size = token
             elif token in self.SHAPE_WORDS:
-                # Shape could also serve as the object name if alone (e.g. "find the box")
                 shape = token
                 noun_candidates.append(token)
             elif token in self.QUANTITY_MAP:
                 quantity = self.QUANTITY_MAP[token]
             elif token.isdigit():
                 quantity = int(token)
-            elif token in self.STOP_WORDS or token in ("robot", "arm", "jetarm", "diy"):
+            elif token in self.STOP_WORDS or token in ("robot", "arm", "jetarm", "diy", "1", "2"):
                 continue
             else:
                 noun_candidates.append(token)
 
-        # The primary object name is the last significant noun candidate
         if not noun_candidates:
             if shape:
                 object_name = shape
@@ -254,14 +294,15 @@ class DynamicCommandParser:
             else:
                 return None
         else:
-            object_name = noun_candidates[-1]
+            filtered_nouns = [n for n in noun_candidates if n not in self.SHAPE_WORDS] or noun_candidates
+            object_name = " ".join(filtered_nouns)
 
-        # Prevent 'it' or verbs from becoming the object name
         if object_name in ("it", "them", "thing", "object", "item") and (color or shape or size):
             object_name = f"{color or size or shape or 'item'}"
 
         attributes = ObjectAttributes(
             color=color,
+            colour=color,
             size=size,
             shape=shape,
             extra=extra_attrs,
@@ -269,6 +310,8 @@ class DynamicCommandParser:
 
         return TargetObject(
             name=object_name,
+            color=color,
+            colour=color,
             attributes=attributes,
             quantity=quantity,
         )
@@ -279,8 +322,9 @@ class DynamicCommandParser:
         obj_desc = ""
         if obj:
             parts = []
-            if obj.attributes.color:
-                parts.append(obj.attributes.color)
+            c = obj.colour or obj.color
+            if c:
+                parts.append(c)
             if obj.attributes.size:
                 parts.append(obj.attributes.size)
             parts.append(obj.name)
@@ -312,13 +356,13 @@ class AICommandInterpreter:
         actions = self._build_execution_actions(structured_task)
 
         target_robot = structured_task.source or "jetarm"
-        if structured_task.destination in ("jetarm", "diy_arm"):
+        if structured_task.destination in ("Robot 1", "Robot 2", "jetarm", "diy_arm"):
             target_robot = "both" if structured_task.source != structured_task.destination else target_robot
 
         return ActionPlan(
             raw_command=command,
             intent=structured_task.action.upper(),
-            target_robot=target_robot,
+            target_robot=str(target_robot),
             structured_task=structured_task,
             actions=actions,
             confidence=structured_task.confidence,
@@ -328,12 +372,12 @@ class AICommandInterpreter:
     def _build_execution_actions(self, task: StructuredTask) -> List[RobotAction]:
         actions: List[RobotAction] = []
         action_name = task.action
-        source_robot = task.source or "jetarm"
+        source_robot = str(task.source or "diy_arm")
         target_obj_name = task.object.name if task.object else "target"
-        color_attr = task.object.attributes.color if task.object else ""
+        color_attr = (task.object.colour or task.object.color) if task.object else ""
         label = f"{color_attr} {target_obj_name}".strip()
 
-        if action_name == "pick_and_transfer":
+        if action_name in ("transfer", "pick_and_transfer"):
             dest_robot = task.destination if task.destination in ("jetarm", "diy_arm") else "jetarm"
             src_robot = source_robot if source_robot != dest_robot else ("diy_arm" if dest_robot == "jetarm" else "jetarm")
 

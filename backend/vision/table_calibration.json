@@ -1,0 +1,26 @@
+{
+  "_notice": "CONFIGURABLE PLACEHOLDER CALIBRATION: Replace these values later with actual physical camera/table measurements.",
+  "is_placeholder_calibration": true,
+  "description": "Camera 1 to Fixed Table Coordinate Calibration Configuration",
+  "table_surface_z_mm": 0.0,
+  "image_width": 640,
+  "image_height": 480,
+  "pixels_per_mm_x": 1.5,
+  "pixels_per_mm_y": 1.5,
+  "principal_point_x": 320.0,
+  "principal_point_y": 240.0,
+  "table_origin_offset_x_mm": 0.0,
+  "table_origin_offset_y_mm": 300.0,
+  "reference_pixel_points": [
+    [120.0, 100.0],
+    [520.0, 100.0],
+    [520.0, 380.0],
+    [120.0, 380.0]
+  ],
+  "reference_table_points": [
+    [-133.33, 206.67],
+    [133.33, 206.67],
+    [133.33, 393.33],
+    [-133.33, 393.33]
+  ]
+}

@@ -1,7 +1,60 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional, Tuple, Union
-import cv2
-import numpy as np
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+
+try:
+    import numpy as np
+except ImportError:
+    class _MockImg:
+        def __init__(self, shape):
+            self.shape = shape
+            self.size = shape[0] * shape[1] if len(shape) >= 2 else 1
+        def copy(self):
+            return self
+
+    class _NpMock:
+        uint8 = int
+        float32 = float
+        ndarray = _MockImg
+        @staticmethod
+        def array(x, *a, **k):
+            return x
+        @staticmethod
+        def full(shape, fill_value, dtype=None):
+            return _MockImg(shape)
+        @staticmethod
+        def zeros(shape, dtype=None):
+            return _MockImg(shape)
+        @staticmethod
+        def ones(shape, dtype=None):
+            return _MockImg(shape)
+    np = _NpMock()
+
+if cv2 is None:
+    class _Cv2Mock:
+        FONT_HERSHEY_SIMPLEX = 0
+        LINE_AA = 16
+        MORPH_RECT = 0
+        MORPH_OPEN = 2
+        MORPH_CLOSE = 3
+        RETR_EXTERNAL = 0
+        CHAIN_APPROX_SIMPLE = 1
+        COLOR_BGR2HSV = 40
+        @staticmethod
+        def line(*a, **k): pass
+        @staticmethod
+        def rectangle(*a, **k): pass
+        @staticmethod
+        def ellipse(*a, **k): pass
+        @staticmethod
+        def circle(*a, **k): pass
+        @staticmethod
+        def putText(*a, **k): pass
+    cv2 = _Cv2Mock()
+
 import os
 import threading
 import time

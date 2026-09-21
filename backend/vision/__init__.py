@@ -24,6 +24,18 @@ from .processor import (
     vision_processor,
 )
 from .object_matcher import ObjectMatchQuery, MatchResult, ObjectMatcher, object_matcher
+from .calibration import (
+    TableCoordinates,
+    TableDimensions,
+    TableCalibrationConfig,
+    CameraTableCalibrator,
+    table_calibrator,
+    pixel_to_table,
+    table_to_pixel,
+    estimate_dimensions,
+    FRAME_IMAGE_PIXELS,
+    FRAME_TABLE_COORDINATES,
+)
 
 __all__ = [
     "BoundingBox",
@@ -49,4 +61,15 @@ __all__ = [
     "MatchResult",
     "ObjectMatcher",
     "object_matcher",
+    "TableCoordinates",
+    "TableDimensions",
+    "TableCalibrationConfig",
+    "CameraTableCalibrator",
+    "table_calibrator",
+    "pixel_to_table",
+    "table_to_pixel",
+    "estimate_dimensions",
+    "FRAME_IMAGE_PIXELS",
+    "FRAME_TABLE_COORDINATES",
 ]
+

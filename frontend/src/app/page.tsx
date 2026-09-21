@@ -184,10 +184,10 @@ export default function AssistantChatPage() {
   };
 
   const samplePrompts = [
-    'Pick the red bottle.',
-    'Find the blue cup.',
-    'Pick the mouse.',
-    'Take the green bottle and give it to the JetArm.',
+    'Robot 1 pick the red bottle and give it to Robot 2',
+    'Robot 1 pick the mango and give it to Robot 2',
+    'Robot 1 pick the mobile phone and give it to Robot 2',
+    'Robot 1 pick the blue cup and give it to Robot 2',
   ];
 
   const handleInspectTarget = (task?: StructuredTask | null) => {
@@ -287,6 +287,56 @@ export default function AssistantChatPage() {
                         </p>
                       )}
 
+                      {/* Step 1.5: Interpreted Instruction Structure (Step 1 Transfer Schema) */}
+                      {msg.structuredTask && (
+                        <div className="p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 font-mono text-xs max-w-md shadow-md space-y-2">
+                          <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/80 text-zinc-400">
+                            <span className="flex items-center gap-1.5 text-cyan-400 font-semibold text-[11px] tracking-wider uppercase">
+                              <Sparkles className="w-3.5 h-3.5" /> Interpreted Instruction
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-sans">
+                              Dual Fixed 6-DOF Arms
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-1 text-zinc-200">
+                            <div>
+                              <span className="text-zinc-500 block text-[10px] uppercase tracking-wider">Action:</span>
+                              <strong className="text-zinc-100 font-semibold uppercase">{msg.structuredTask.action}</strong>
+                            </div>
+                            <div>
+                              <span className="text-zinc-500 block text-[10px] uppercase tracking-wider">Object:</span>
+                              <strong className="text-emerald-400 font-semibold capitalize">
+                                {msg.structuredTask.object_name || msg.structuredTask.object?.name || 'Unspecified'}
+                              </strong>
+                            </div>
+                            <div>
+                              <span className="text-zinc-500 block text-[10px] uppercase tracking-wider">Colour:</span>
+                              <span className={msg.structuredTask.colour || msg.structuredTask.object?.colour || msg.structuredTask.color ? "text-cyan-300 capitalize font-medium" : "text-zinc-500 italic"}>
+                                {msg.structuredTask.colour || msg.structuredTask.object?.colour || msg.structuredTask.color || 'null (unspecified)'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-zinc-500 block text-[10px] uppercase tracking-wider">Source Robot:</span>
+                              <span className="text-zinc-100 font-medium">
+                                {msg.structuredTask.source_robot || msg.structuredTask.source || 'Robot 1'}
+                              </span>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-zinc-500 block text-[10px] uppercase tracking-wider">Destination Robot:</span>
+                              <span className="text-zinc-100 font-medium">
+                                {msg.structuredTask.destination_robot || msg.structuredTask.destination || 'Robot 2'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-zinc-800/60 flex items-center gap-1.5 text-[10px] text-zinc-500">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                            <span>Fixed-base requirement: Only arm joints & grippers move. Base is completely fixed.</span>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Step 2: "Looking for the..." State */}
                       {msg.searchingText && (
                         <div className="flex items-center gap-2 text-xs sm:text-sm text-zinc-400 font-normal">
@@ -306,43 +356,79 @@ export default function AssistantChatPage() {
 
                       {/* Step 4: Structured Target Information Card */}
                       {msg.status === 'found' && msg.target && (
-                        <div className="mt-2 p-4 rounded-xl bg-zinc-900 border border-zinc-800/80 font-mono text-xs max-w-md shadow-lg space-y-2">
+                        <div className="mt-2 p-4 rounded-xl bg-zinc-900 border border-zinc-800/80 font-mono text-xs max-w-md shadow-lg space-y-2.5">
                           <div className="flex items-center justify-between pb-2 border-b border-zinc-800 text-zinc-400">
                             <span className="flex items-center gap-1.5 text-emerald-400 font-semibold text-[11px] tracking-wider uppercase">
                               <CheckCircle2 className="w-3.5 h-3.5" /> Target Validated
                             </span>
-                            <span className="text-[10px] text-zinc-500">
-                              Camera Image Coordinates
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-cyan-300 font-sans font-medium">
+                              Table Coordinates Active
                             </span>
                           </div>
 
-                          <div className="space-y-1.5 pt-1 text-zinc-200">
+                          <div className="space-y-1.5 pt-0.5 text-zinc-200">
+                            {/* Object Name & Colour */}
                             <div className="flex items-center justify-between">
-                              <span className="text-zinc-400">Target:</span>
-                              <strong className="text-zinc-100 capitalize">
-                                {msg.target.color ? `${msg.target.color} ` : ''}{msg.target.name}
+                              <span className="text-zinc-400">Object Name:</span>
+                              <strong className="text-emerald-400 capitalize font-bold">
+                                {msg.target.name}
                               </strong>
                             </div>
 
                             <div className="flex items-center justify-between">
-                              <span className="text-zinc-400">Confidence:</span>
+                              <span className="text-zinc-400">Colour:</span>
+                              <span className={msg.target.color ? "text-cyan-300 font-semibold capitalize" : "text-zinc-500 italic"}>
+                                {msg.target.color || 'null (unspecified)'}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <span className="text-zinc-400">Detection Confidence:</span>
                               <span className="text-cyan-400 font-bold">
                                 {Math.round(msg.target.confidence * 100)}%
                               </span>
                             </div>
 
-                            <div className="flex items-center justify-between">
-                              <span className="text-zinc-400">Position:</span>
-                              <span className="text-zinc-100 font-semibold">
-                                ({msg.target.center.x}, {msg.target.center.y})
+                            {/* Pixel Coordinates: IMAGE_COORDINATES_PIXELS */}
+                            <div className="flex items-center justify-between pt-1.5 border-t border-zinc-800/60">
+                              <span className="text-zinc-400 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                                Pixel X / Y:
+                              </span>
+                              <span className="text-zinc-100 font-medium">
+                                X: {msg.target.center.x} px, Y: {msg.target.center.y} px
+                              </span>
+                            </div>
+
+                            {/* Table Coordinates: TABLE_COORDINATES */}
+                            {msg.target.table_coordinates && (
+                              <div className="flex items-center justify-between bg-zinc-950/80 p-2 rounded-lg border border-amber-500/20">
+                                <span className="text-amber-400 font-semibold flex items-center gap-1.5 text-[11px]">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                                  Table X / Y / Z:
+                                </span>
+                                <span className="text-amber-200 font-bold text-xs">
+                                  X: {msg.target.table_coordinates.x} mm, Y: {msg.target.table_coordinates.y} mm, Z: {msg.target.table_coordinates.z} mm
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Dimensions */}
+                            <div className="flex items-center justify-between text-[11px] text-zinc-300">
+                              <span className="text-zinc-400">Dimensions:</span>
+                              <span>
+                                {msg.target.bounding_box.x2 - msg.target.bounding_box.x1} x {msg.target.bounding_box.y2 - msg.target.bounding_box.y1} px
+                                {msg.target.table_dimensions && (
+                                  <span className="text-amber-300 ml-1 font-medium">
+                                    (~{msg.target.table_dimensions.width_mm} x {msg.target.table_dimensions.length_mm} mm)
+                                  </span>
+                                )}
                               </span>
                             </div>
                           </div>
 
-                          <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-between">
-                            <span className="text-[10px] text-zinc-500">
-                              Motion planning ready
-                            </span>
+                          <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[10px] text-zinc-500">
+                            <span>Frame: TABLE_COORDINATES (Placeholder)</span>
                             <button
                               onClick={() => handleInspectTarget(msg.structuredTask)}
                               className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 font-sans font-medium transition-colors"
@@ -360,19 +446,24 @@ export default function AssistantChatPage() {
                           {msg.candidates.map((cand, cIdx) => (
                             <div
                               key={cIdx}
-                              className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 font-mono text-xs flex items-center justify-between"
+                              className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 font-mono text-xs space-y-1"
                             >
-                              <div>
-                                <span className="font-semibold text-zinc-200 capitalize">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-zinc-200 capitalize">
                                   Candidate {cIdx + 1}: {cand.color ? `${cand.color} ` : ''}{cand.name}
                                 </span>
-                                <span className="text-zinc-400 block text-[11px]">
-                                  Position: ({cand.center.x}, {cand.center.y})
+                                <span className="text-cyan-400 font-bold text-xs">
+                                  {Math.round(cand.confidence * 100)}%
                                 </span>
                               </div>
-                              <span className="text-cyan-400 font-bold text-xs">
-                                {Math.round(cand.confidence * 100)}%
-                              </span>
+                              <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                                <span>Pixel: ({cand.center.x}, {cand.center.y}) px</span>
+                                {cand.table_coordinates && (
+                                  <span className="text-amber-300 font-medium">
+                                    Table: ({cand.table_coordinates.x}, {cand.table_coordinates.y}, {cand.table_coordinates.z}) mm
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>

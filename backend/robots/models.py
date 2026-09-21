@@ -1,6 +1,12 @@
 from enum import Enum
 from typing import List, Optional
-from pydantic import BaseModel, Field
+try:
+    from pydantic import BaseModel, Field
+except ImportError:
+    try:
+        from ai.schemas import BaseModel, Field
+    except ImportError:
+        from ..ai.schemas import BaseModel, Field
 import time
 
 

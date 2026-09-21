@@ -37,15 +37,20 @@ def generate_understanding_text(task: StructuredTask) -> str:
     """Generate conversational acknowledgment of the user's intent."""
     action = task.action.replace("_", " ")
     if task.object:
-        color_str = f"{task.object.color} " if task.object.color else ""
-        name_str = task.object.name
+        c = task.colour or task.object.colour or task.object.color
+        color_str = f"{c} " if c else ""
+        name_str = task.object_name or task.object.name
         target_str = f"{color_str}{name_str}".strip()
 
-        if action == "pick and transfer":
-            dest_name = "the JetArm" if task.destination == "jetarm" else (task.destination or "the other arm")
-            return f"I understood that you want me to pick the {target_str} and give it to {dest_name}."
+        if action in ("transfer", "pick and transfer"):
+            src_name = str(task.source_robot or task.source or "Robot 1")
+            dest_name = str(task.destination_robot or task.destination or "Robot 2")
+            if dest_name.lower() == "jetarm":
+                dest_name = "the JetArm"
+            return f"I understood that you want {src_name} to pick the {target_str} and give it to {dest_name}."
         elif action in ("pick", "take", "grab"):
-            return f"I understood that you want me to pick the {target_str}."
+            src_name = f"{task.source_robot} to " if task.source_robot else "me to "
+            return f"I understood that you want {src_name}pick the {target_str}."
         elif action in ("find", "locate", "detect", "look for"):
             return f"I understood that you want me to find the {target_str}."
         elif action in ("move", "shift"):

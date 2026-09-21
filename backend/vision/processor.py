@@ -1,7 +1,24 @@
 import asyncio
-import cv2
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+
 import math
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    class _NpMock:
+        uint8 = int
+        ndarray = object
+        @staticmethod
+        def array(x, *a, **k):
+            return x
+        @staticmethod
+        def full(shape, fill_value, dtype=None):
+            return []
+    np = _NpMock()
+
 import time
 from typing import AsyncGenerator, Dict, List, Optional, Any, Tuple
 

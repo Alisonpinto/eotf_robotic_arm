@@ -9,11 +9,13 @@ try:
     from vision.detector import DetectedObject, vision_detector
     from vision.camera import camera_source, camera_manager
     from vision.object_matcher import object_matcher, MatchResult, ObjectMatchQuery
+    from vision.calibration import table_calibrator, TableCalibrationConfig, TableCoordinates
 except ImportError:
     from ..vision.processor import vision_processor
     from ..vision.detector import DetectedObject, vision_detector
     from ..vision.camera import camera_source, camera_manager
     from ..vision.object_matcher import object_matcher, MatchResult, ObjectMatchQuery
+    from ..vision.calibration import table_calibrator, TableCalibrationConfig, TableCoordinates
 
 router = APIRouter(prefix="/api/vision", tags=["vision"])
 
@@ -25,7 +27,11 @@ class DetectionResponse(BaseModel):
     detected_objects: List[DetectedObject]
     match_result: Optional[MatchResult] = None
     coordinate_system: str = "IMAGE_COORDINATES_PIXELS"
+    table_coordinate_system: str = "TABLE_COORDINATES"
+    table_surface_z_mm: float = 0.0
+    is_placeholder_calibration: bool = True
     robot_coordinate_status: str = "PENDING_CALIBRATION (Extrinsic transformation matrix needed when physical camera is installed)"
+
 
 
 class SampleDetectRequest(BaseModel):
@@ -144,6 +150,7 @@ async def detect_uploaded_image(
         query = ObjectMatchQuery(name=target_name, color=target_color)
         match_res = object_matcher.match(detected_objects, query)
 
+    calib_cfg = table_calibrator.config if table_calibrator else None
     return DetectionResponse(
         status="success",
         image_width=w,
@@ -151,6 +158,9 @@ async def detect_uploaded_image(
         detected_objects=detected_objects,
         match_result=match_res,
         coordinate_system="IMAGE_COORDINATES_PIXELS",
+        table_coordinate_system="TABLE_COORDINATES",
+        table_surface_z_mm=calib_cfg.table_surface_z_mm if calib_cfg else 0.0,
+        is_placeholder_calibration=calib_cfg.is_placeholder_calibration if calib_cfg else True,
         robot_coordinate_status="PENDING_CALIBRATION (Requires camera extrinsic calibration matrix [K|R|t])",
     )
 
@@ -176,6 +186,7 @@ async def detect_sample_image(req: Optional[SampleDetectRequest] = None):
         query = ObjectMatchQuery(name=target_name, color=target_color)
         match_res = object_matcher.match(detected_objects, query)
 
+    calib_cfg = table_calibrator.config if table_calibrator else None
     return DetectionResponse(
         status="success",
         image_width=w,
@@ -183,15 +194,63 @@ async def detect_sample_image(req: Optional[SampleDetectRequest] = None):
         detected_objects=detected_objects,
         match_result=match_res,
         coordinate_system="IMAGE_COORDINATES_PIXELS",
+        table_coordinate_system="TABLE_COORDINATES",
+        table_surface_z_mm=calib_cfg.table_surface_z_mm if calib_cfg else 0.0,
+        is_placeholder_calibration=calib_cfg.is_placeholder_calibration if calib_cfg else True,
         robot_coordinate_status="PENDING_CALIBRATION (Requires camera extrinsic calibration matrix [K|R|t])",
     )
+
+
+@router.get("/calibration")
+async def get_calibration():
+    """
+    Get current camera-to-table calibration configuration and parameters.
+    Clearly marks whether placeholder values or real measured values are active.
+    """
+    if not table_calibrator:
+        raise HTTPException(status_code=500, detail="Table calibrator not initialized")
+    return {
+        "status": "success",
+        "frame_image": "IMAGE_COORDINATES_PIXELS",
+        "frame_table": "TABLE_COORDINATES",
+        "config": table_calibrator.config.model_dump(),
+        "notice": "Replace placeholder values in table_calibration.json when physical setup is measured."
+    }
+
+
+@router.post("/calibration")
+async def update_calibration(config_update: Dict[str, Any]):
+    """
+    Update camera-to-table calibration configuration.
+    Allows entering real measurements dynamically.
+    """
+    if not table_calibrator:
+        raise HTTPException(status_code=500, detail="Table calibrator not initialized")
+    table_calibrator.configure(
+        table_surface_z_mm=config_update.get("table_surface_z_mm"),
+        pixels_per_mm_x=config_update.get("pixels_per_mm_x"),
+        pixels_per_mm_y=config_update.get("pixels_per_mm_y"),
+        principal_point_x=config_update.get("principal_point_x"),
+        principal_point_y=config_update.get("principal_point_y"),
+        table_origin_offset_x_mm=config_update.get("table_origin_offset_x_mm"),
+        table_origin_offset_y_mm=config_update.get("table_origin_offset_y_mm"),
+        is_placeholder_calibration=config_update.get("is_placeholder_calibration"),
+        save=config_update.get("save", False),
+    )
+    return {
+        "status": "success",
+        "message": "Calibration updated successfully.",
+        "config": table_calibrator.config.model_dump(),
+    }
 
 
 @router.get("/sample-image")
 async def get_sample_image():
     """Download the synthetic test workbench image as a JPEG."""
     sample_img = camera_source.generate_sample_workbench_image()
-    ret, buffer = cv2.imencode(".jpg", sample_img, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
-    if not ret:
-        raise HTTPException(status_code=500, detail="Failed to encode sample image")
-    return Response(content=buffer.tobytes(), media_type="image/jpeg")
+    if hasattr(cv2, "imencode"):
+        ret, buffer = cv2.imencode(".jpg", sample_img, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        if ret:
+            return Response(content=buffer.tobytes(), media_type="image/jpeg")
+    return Response(content=b"", media_type="image/jpeg")
+

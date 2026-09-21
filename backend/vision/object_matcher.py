@@ -1,5 +1,11 @@
 from typing import Any, Dict, List, Optional, Union
-from pydantic import BaseModel, Field
+try:
+    from pydantic import BaseModel, Field
+except ImportError:
+    try:
+        from ai.schemas import BaseModel, Field
+    except ImportError:
+        from ..ai.schemas import BaseModel, Field
 
 try:
     from ai.schemas import (
@@ -20,6 +26,16 @@ except ImportError:
     )
     from .detector import DetectedObject, Point2D, BoundingBox
 
+try:
+    from vision.calibration import table_calibrator, TableCoordinates, TableDimensions
+except ImportError:
+    try:
+        from .calibration import table_calibrator, TableCoordinates, TableDimensions
+    except ImportError:
+        table_calibrator = None
+        TableCoordinates = None
+        TableDimensions = None
+
 
 class ObjectMatchQuery(BaseModel):
     """Target object criteria used for matching."""
@@ -30,12 +46,13 @@ class ObjectMatchQuery(BaseModel):
 
 class MatchResult(BaseModel):
     """
-    Legacy and comprehensive result of matching a requested AI task object against visual detections.
+    Comprehensive result of matching a requested AI task object against visual detections.
     
-    IMPORTANT ARCHITECTURAL DISTINCTION:
+    IMPORTANT ARCHITECTURAL DISTINCTIONS:
     - image_coordinates: Exact pixel coordinates on the 2D camera sensor (e.g. x: 385, y: 285).
+    - table_coordinates: Physical coordinates (X, Y, Z in mm) on the fixed table plane.
     - robot_coordinates: Explicitly marked as PENDING_CALIBRATION. 
-      Camera coordinates != Robot coordinates.
+      Camera coordinates != Table coordinates != Robot coordinates.
     """
     matched: bool = Field(..., description="Whether a suitable object was found")
     matched_object: Optional[DetectedObject] = None
@@ -45,15 +62,28 @@ class MatchResult(BaseModel):
         None,
         description="2D pixel coordinates on the camera image plane"
     )
+    table_coordinates: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Physical table coordinates (X, Y, Z in mm) on the fixed table surface"
+    )
+    table_dimensions: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Estimated physical dimensions on table (width_mm, length_mm)"
+    )
     coordinate_frame: str = Field(
         "IMAGE_COORDINATES_PIXELS",
-        description="Coordinate frame identifier"
+        description="Coordinate frame identifier for image coordinates"
+    )
+    table_coordinate_frame: str = Field(
+        "TABLE_COORDINATES",
+        description="Coordinate frame identifier for physical table coordinates"
     )
     robot_coordinates_status: str = Field(
         "UNAVAILABLE_PENDING_CALIBRATION",
         description="Robot coordinate status: Extrinsic matrix calibration required when physical camera is installed"
     )
     reasoning: str = Field(..., description="Explanation of why this detection was selected")
+
 
 
 class MatchEvaluation(BaseModel):
@@ -83,8 +113,10 @@ class ObjectMatcher:
         "mouse": ["mouse"],
         "keyboard": ["keyboard"],
         "laptop": ["laptop", "computer"],
-        "phone": ["cell phone", "phone", "mobile"],
-        "cell phone": ["cell phone", "phone", "mobile"],
+        "phone": ["cell phone", "phone", "mobile", "mobile phone"],
+        "cell phone": ["cell phone", "phone", "mobile", "mobile phone"],
+        "mobile phone": ["cell phone", "phone", "mobile", "mobile phone"],
+        "mobile": ["cell phone", "phone", "mobile", "mobile phone"],
         "person": ["person", "human", "user"],
     }
 
@@ -201,7 +233,17 @@ class ObjectMatcher:
         )
 
     def _convert_to_matched_target(self, obj: DetectedObject) -> MatchedTarget:
-        """Convert a detected object to the validated target representation."""
+        """Convert a detected object to the validated target representation with table coordinates."""
+        table_coords = getattr(obj, "table_coordinates", None)
+        if table_coords is None and table_calibrator is not None:
+            table_coords = table_calibrator.pixel_to_table(obj.center.x, obj.center.y)
+
+        table_dims = getattr(obj, "table_dimensions", None)
+        if table_dims is None and table_calibrator is not None:
+            table_dims = table_calibrator.estimate_dimensions_mm(
+                obj.bounding_box.width, obj.bounding_box.height
+            )
+
         return MatchedTarget(
             name=obj.name,
             color=obj.color,
@@ -217,6 +259,8 @@ class ObjectMatcher:
                 y=obj.center.y,
             ),
             coordinate_frame="IMAGE_COORDINATES_PIXELS",
+            table_coordinates=table_coords,
+            table_dimensions=table_dims,
             robot_coordinates=None,
         )
 
@@ -248,13 +292,29 @@ class ObjectMatcher:
                 "width_pixels": eval_res.target.bounding_box.x2 - eval_res.target.bounding_box.x1,
                 "height_pixels": eval_res.target.bounding_box.y2 - eval_res.target.bounding_box.y1,
             }
+
+            table_coords = getattr(orig_obj, "table_coordinates", None)
+            if table_coords is None and table_calibrator is not None:
+                table_coords = table_calibrator.pixel_to_table(orig_obj.center.x, orig_obj.center.y)
+            table_coords_dict = table_coords.to_dict() if hasattr(table_coords, "to_dict") else (table_coords if isinstance(table_coords, dict) else None)
+
+            table_dims = getattr(orig_obj, "table_dimensions", None)
+            if table_dims is None and table_calibrator is not None:
+                table_dims = table_calibrator.estimate_dimensions_mm(
+                    orig_obj.bounding_box.width, orig_obj.bounding_box.height
+                )
+            table_dims_dict = table_dims.to_dict() if hasattr(table_dims, "to_dict") else (table_dims if isinstance(table_dims, dict) else None)
+
             return MatchResult(
                 matched=True,
                 matched_object=orig_obj,
                 match_score=eval_res.target.confidence,
                 requested_object=query.model_dump(),
                 image_coordinates=image_coords,
+                table_coordinates=table_coords_dict,
+                table_dimensions=table_dims_dict,
                 coordinate_frame="IMAGE_COORDINATES_PIXELS",
+                table_coordinate_frame="TABLE_COORDINATES",
                 robot_coordinates_status="UNAVAILABLE_PENDING_CALIBRATION (Physical camera required for 3D extrinsic matrix)",
                 reasoning=eval_res.reason,
             )
@@ -265,7 +325,10 @@ class ObjectMatcher:
                 match_score=0.0,
                 requested_object=query.model_dump(),
                 image_coordinates=None,
+                table_coordinates=None,
+                table_dimensions=None,
                 coordinate_frame="IMAGE_COORDINATES_PIXELS",
+                table_coordinate_frame="TABLE_COORDINATES",
                 robot_coordinates_status="UNAVAILABLE_PENDING_CALIBRATION",
                 reasoning=eval_res.reason,
             )

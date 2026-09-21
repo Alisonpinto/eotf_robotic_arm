@@ -52,6 +52,23 @@ export interface Point2D {
   y: number;
 }
 
+export interface TableCoordinates {
+  x: number;
+  y: number;
+  z: number;
+  frame: string;
+  unit: string;
+  is_placeholder_calibration?: boolean;
+}
+
+export interface TableDimensions {
+  width_mm: number;
+  length_mm: number;
+  pixel_width: number;
+  pixel_height: number;
+  unit: string;
+}
+
 export interface DetectedObject {
   id: string;
   name: string;
@@ -61,6 +78,8 @@ export interface DetectedObject {
   color?: string | null;
   area_pixels?: number;
   coordinate_frame?: string;
+  table_coordinates?: TableCoordinates | null;
+  table_dimensions?: TableDimensions | null;
   robot_coordinates?: any;
 }
 
@@ -75,7 +94,10 @@ export interface MatchResult {
     width_pixels: number;
     height_pixels: number;
   } | null;
+  table_coordinates?: TableCoordinates | null;
+  table_dimensions?: TableDimensions | null;
   coordinate_frame: string;
+  table_coordinate_frame?: string;
   robot_coordinates_status: string;
   reasoning: string;
 }
@@ -87,6 +109,9 @@ export interface DetectionResponse {
   detected_objects: DetectedObject[];
   match_result?: MatchResult | null;
   coordinate_system: string;
+  table_coordinate_system?: string;
+  table_surface_z_mm?: number;
+  is_placeholder_calibration?: boolean;
   robot_coordinate_status: string;
 }
 
@@ -100,6 +125,7 @@ export interface ObjectAttributes {
 export interface TargetObject {
   name: string;
   color?: string | null;
+  colour?: string | null;
   attributes: ObjectAttributes;
   quantity?: number | string | null;
 }
@@ -108,6 +134,11 @@ export interface StructuredTask {
   raw_command: string;
   action: string;
   object?: TargetObject | null;
+  object_name?: string | null;
+  colour?: string | null;
+  color?: string | null;
+  source_robot?: string | null;
+  destination_robot?: string | null;
   source?: string | null;
   destination?: string | null;
   confidence: number;
@@ -197,6 +228,8 @@ export interface MatchedTarget {
   bounding_box: BoundingBox;
   center: Point2D;
   coordinate_frame: string;
+  table_coordinates?: TableCoordinates | null;
+  table_dimensions?: TableDimensions | null;
   robot_coordinates?: any;
 }
 
